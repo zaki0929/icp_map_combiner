@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>icp_map_combiner</name>
+  <version>0.0.0</version>
+  <description>The icp_map_combiner package</description>
+
+  <maintainer email="zaki@todo.todo">zaki</maintainer>
+
+
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>pcl_conversions</build_depend>
+  <build_depend>pcl_ros</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>eigen</build_depend>
+  <build_export_depend>pcl_conversions</build_export_depend>
+  <build_export_depend>pcl_ros</build_export_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>eigen</build_export_depend>
+  <exec_depend>pcl_conversions</exec_depend>
+  <exec_depend>pcl_ros</exec_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>eigen</exec_depend>
+
+
+  <export>
+  </export>
+</package>
