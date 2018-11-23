@@ -2,7 +2,7 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/registration/icp.h>
-#include <pcl/visualization/cloud_viewer.h>
+#include <pcl/visualization/pcl_visualizer.h>
 #include <Eigen/Dense>
 
 inline void print4x4Matrix (const Eigen::Matrix4d & matrix) {
@@ -12,6 +12,40 @@ inline void print4x4Matrix (const Eigen::Matrix4d & matrix) {
   printf ("    | %6.3f %6.3f %6.3f | \n", matrix (2, 0), matrix (2, 1), matrix (2, 2));
   printf ("Translation vector :\n");
   printf ("t = < %6.3f, %6.3f, %6.3f >\n\n", matrix (0, 3), matrix (1, 3), matrix (2, 3));
+}
+
+boost::shared_ptr<pcl::visualization::PCLVisualizer> simpleVis (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud2)
+{
+  // --------------------------------------------
+  // -----Open 3D viewer and add point cloud-----
+  // --------------------------------------------
+  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  viewer->setBackgroundColor (0, 0, 0);
+  viewer->addPointCloud<pcl::PointXYZ> (cloud, "cloud");
+  viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "cloud");
+  viewer->addPointCloud<pcl::PointXYZ> (cloud2, "cloud2");
+  viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "cloud2");
+  viewer->addCoordinateSystem (1.0);
+  viewer->initCameraParameters ();
+  return viewer;
+}
+
+boost::shared_ptr<pcl::visualization::PCLVisualizer> customColourVis (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud2)
+{
+  // --------------------------------------------
+  // -----Open 3D viewer and add point cloud-----
+  // --------------------------------------------
+  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  viewer->setBackgroundColor (0, 0, 0);
+  pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color(cloud, 0, 255, 0);
+  viewer->addPointCloud<pcl::PointXYZ> (cloud, single_color, "cloud");
+  viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "cloud");
+  pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color2(cloud2, 255, 0, 0);
+  viewer->addPointCloud<pcl::PointXYZ> (cloud2, single_color2, "cloud2");
+  viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "cloud2");
+  viewer->addCoordinateSystem (1.0);
+  viewer->initCameraParameters ();
+  return (viewer);
 }
 
 int main (int argc, char** argv){
@@ -57,10 +91,13 @@ int main (int argc, char** argv){
   transformation_matrix = icp.getFinalTransformation ().cast<double>();
   print4x4Matrix (transformation_matrix);
 
-  pcl::visualization::CloudViewer viewer("Point Cloud Viewer");
-  //viewer.showCloud(cloud_in);
-  viewer.showCloud(cloud_out);
+  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+  //viewer = simpleVis(cloud_in, cloud_out);
+  viewer = customColourVis(cloud_in, cloud_out);
 
   // 待機
-  while (!viewer.wasStopped()) {} 
+  while (!viewer->wasStopped()) {
+    viewer->spinOnce (100);
+    boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+  }
 }
