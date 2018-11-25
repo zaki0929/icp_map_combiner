@@ -1,9 +1,13 @@
 #include <ros/ros.h>
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
+//#include <pcl/point_types.h>
+//#include <pcl/point_cloud.h>
 #include <pcl/registration/icp.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/common/transforms.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/core/eigen.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 #include <Eigen/Dense>
 
 inline void print4x4Matrix (const Eigen::Matrix4d & matrix)
@@ -38,7 +42,51 @@ boost::shared_ptr<pcl::visualization::PCLVisualizer> threeCloudsVis (
 
   viewer->addCoordinateSystem (1.0);
   viewer->initCameraParameters ();
-  return (viewer);
+  return viewer;
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::string map_name, int z){
+  // 地図の読み込み
+  std::string homepath = std::getenv("HOME");
+  cv::Mat img = cv::imread(homepath + "/catkin_ws/src/icp_map_combiner/map/" + map_name, 0);
+  if(img.empty()){
+    ROS_ERROR("map: unable to open the map");
+  }else{
+    ROS_INFO("map: map loaded");
+  }
+  
+  // 地図データをOpenCVからEigenに渡す
+  Eigen::MatrixXd img_e;
+  cv::cv2eigen(img, img_e);
+  ROS_INFO("map: opencv -> eigen");
+
+  int plot_num = 0;
+  for(int i=0; i<img_e.rows(); i++){
+    for(int j=0; j<img_e.cols(); j++){
+      if(img_e(j, i) < 205){
+        plot_num++;
+      }
+    }
+  }
+
+  cloud->width    = plot_num;
+  cloud->height   = 1;
+  cloud->is_dense = false;
+  cloud->points.resize (cloud->width * cloud->height);
+
+  int index = 0;
+  for(int i=0; i<img_e.rows(); i++){
+    for(int j=0; j<img_e.cols(); j++){
+      if(img_e(j, i) < 205){
+        cloud->points[index].x = j;
+        cloud->points[index].y = i;
+        cloud->points[index].z = z;
+        index++;
+      }
+    }
+  }
+
+  return cloud;
 }
 
 int main (int argc, char** argv)
@@ -46,29 +94,10 @@ int main (int argc, char** argv)
   ros::init(argc, argv, "icp_map_combiner");
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in (new pcl::PointCloud<pcl::PointXYZ>);
+  cloud_in = getPointCloudFromMap(cloud_in, "map1.pgm", 0);
+
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
-
-  // 点群の移動量を設定
-  double x_offset=0.7f;
-  double y_offset=0.5f;
-
-  // 点群 cloud_in にデータをセット
-  cloud_in->width    = 5;
-  cloud_in->height   = 1;
-  cloud_in->is_dense = false;
-  cloud_in->points.resize (cloud_in->width * cloud_in->height);
-  for (size_t i = 0; i < cloud_in->points.size(); ++i) {
-    cloud_in->points[i].x = 1024 * rand () / (RAND_MAX + 1.0f);
-    cloud_in->points[i].y = 1024 * rand () / (RAND_MAX + 1.0f);
-    cloud_in->points[i].z = 1024 * rand () / (RAND_MAX + 1.0f);
-  }
-
-  // cloud_in を移動させた点群である cloud_out を作成
-  *cloud_out = *cloud_in;
-  for (size_t i = 0; i < cloud_in->points.size(); ++i){
-    cloud_out->points[i].x = cloud_in->points[i].x + x_offset;
-    cloud_out->points[i].y = cloud_in->points[i].y + y_offset;
-  }
+  cloud_out = getPointCloudFromMap(cloud_out, "map2.pgm", 100);
 
   // ICP で変換行列を算出
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
