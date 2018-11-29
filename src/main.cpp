@@ -45,7 +45,7 @@ boost::shared_ptr<pcl::visualization::PCLVisualizer> threeCloudsVis (
   return viewer;
 }
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::string map_name, int z){
+pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::string map_name, double offset_x, double offset_y, double offset_z){
   // 地図の読み込み
   std::string homepath = std::getenv("HOME");
   cv::Mat img = cv::imread(homepath + "/catkin_ws/src/icp_map_combiner/map/" + map_name, 0);
@@ -78,9 +78,9 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::Po
   for(int i=0; i<img_e.rows(); i++){
     for(int j=0; j<img_e.cols(); j++){
       if(img_e(j, i) < 205){
-        cloud->points[index].x = j;
-        cloud->points[index].y = i;
-        cloud->points[index].z = z;
+        cloud->points[index].x = j + offset_x;
+        cloud->points[index].y = i + offset_y;
+        cloud->points[index].z = 0 + offset_z;
         index++;
       }
     }
@@ -94,10 +94,12 @@ int main (int argc, char** argv)
   ros::init(argc, argv, "icp_map_combiner");
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in (new pcl::PointCloud<pcl::PointXYZ>);
-  cloud_in = getPointCloudFromMap(cloud_in, "map1.pgm", 0);
+  cloud_in = getPointCloudFromMap(cloud_in, "map1.pgm", 0, 0, 0);
+  //cloud_in = getPointCloudFromMap(cloud_in, "map2.pgm", 0, 0, 0);
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
-  cloud_out = getPointCloudFromMap(cloud_out, "map2.pgm", 100);
+  cloud_out = getPointCloudFromMap(cloud_out, "map1.pgm", 4.0, 4.0, 100);
+  //cloud_out = getPointCloudFromMap(cloud_out, "map2.pgm", 4.0, 4.0, 100);
 
   // ICP で変換行列を算出
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
