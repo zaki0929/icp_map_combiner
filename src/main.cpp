@@ -10,6 +10,24 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <Eigen/Dense>
 
+#define RESOLUTION 0.05
+
+#define MAP1_POS_X 53.2510726225
+#define MAP1_POS_Y -43.5945096362
+#define MAP1_POS_Z 0.0
+#define MAP1_ORI_X 0.0
+#define MAP1_ORI_Y 0.0
+#define MAP1_ORI_Z 0.802374434033
+#define MAP1_ORI_W 0.596820967804
+
+#define MAP2_POS_X 54.2293342001
+#define MAP2_POS_Y -38.9508724862
+#define MAP2_POS_Z 0.0
+#define MAP2_ORI_X 0.0             
+#define MAP2_ORI_Y 0.0
+#define MAP2_ORI_Z 0.905210257215
+#define MAP2_ORI_W 0.424963986984
+                   
 inline void print4x4Matrix (const Eigen::Matrix4d & matrix)
 {
   printf ("Rotation matrix :\n");
@@ -108,11 +126,27 @@ void combine_maps(std::string map1_name, std::string map2_name)
   cv::cv2eigen(map1, map1_e);
   cv::cv2eigen(map2, map2_e);
   ROS_INFO("map: opencv -> eigen");
+
+  // 地図を動かす
+  Eigen::MatrixXd moved_map2_e = Eigen::MatrixXd::Ones(map2_e.rows(), map2_e.cols())*205;
+  int diff_x = int((MAP2_POS_X - MAP1_POS_X) / RESOLUTION);
+  int diff_y = int((MAP2_POS_Y - MAP1_POS_Y) / RESOLUTION);
+  for(int i=0; i<map2_e.rows(); i++){
+    for(int j=0; j<map2_e.cols(); j++){
+      if(map2_e(i, j) != 205){
+        if(i+diff_y < moved_map2_e.rows() && i+diff_y >=0
+        && j-diff_x < moved_map2_e.cols() && j-diff_x >= 0){
+          moved_map2_e(i+diff_y, j-diff_x) = map2_e(i, j);
+        }
+      }
+    }
+  }
   
+  // 地図を合成
   for(int i=0; i<map1_e.rows(); i++){
     for(int j=0; j<map1_e.cols(); j++){
-      if(map1_e(j, i) == 205){
-        map1_e(j, i) = map2_e(j, i);
+      if(map1_e(i, j) == 205){
+        map1_e(i, j) = moved_map2_e(i, j);
       }
     }
   }
@@ -122,6 +156,8 @@ void combine_maps(std::string map1_name, std::string map2_name)
   cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/export/combined_map.pgm", map1);
   ROS_INFO("map: combined map exported");
 }
+
+
 
 int main (int argc, char** argv)
 {
