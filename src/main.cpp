@@ -141,6 +141,11 @@ void combine_maps(std::string map1_name, std::string map2_name)
       }
     }
   }
+
+  cv::eigen2cv(moved_map2_e, map2);
+  ROS_INFO("map: eigen -> opencv");
+  cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/moved_map2.pgm", map2);
+  ROS_INFO("map: moved map exported");
   
   // 地図を合成
   for(int i=0; i<map1_e.rows(); i++){
@@ -163,37 +168,39 @@ int main (int argc, char** argv)
 {
   ros::init(argc, argv, "icp_map_combiner");
 
-//  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in (new pcl::PointCloud<pcl::PointXYZ>);
-//  cloud_in = getPointCloudFromMap(cloud_in, "map1.pgm", 0, 0, 0);
-//  //cloud_in = getPointCloudFromMap(cloud_in, "map2.pgm", 0, 0, 0);
-//
-//  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
-//  cloud_out = getPointCloudFromMap(cloud_out, "map1.pgm", 4.0, 4.0, 100);
-//  //cloud_out = getPointCloudFromMap(cloud_out, "map2.pgm", 4.0, 4.0, 100);
-//
-//  // ICP で変換行列を算出
-//  pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-//  icp.setInputCloud(cloud_in);
-//  icp.setInputTarget(cloud_out);
-//  pcl::PointCloud<pcl::PointXYZ> cloud_source_registered;
-//  icp.align(cloud_source_registered);
-//
-//  // 変換行列を表示
-//  Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity ();
-//  transformation_matrix = icp.getFinalTransformation ().cast<double>();
-//  print4x4Matrix (transformation_matrix);
-//
-//  // 変換行列から ICP で推定された点群 cloud_final を取得
-//  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_final (new pcl::PointCloud<pcl::PointXYZ>);
-//  pcl::transformPointCloud(*cloud_in, *cloud_final, transformation_matrix); 
-//
-//  // 点群の可視化
-//  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
-//  viewer = threeCloudsVis(cloud_in, cloud_out, cloud_final);
-//  while (!viewer->wasStopped()) {
-//    viewer->spinOnce (100);
-//    boost::this_thread::sleep (boost::posix_time::microseconds (100000));
-//  }
-//
   combine_maps("map1.pgm", "map2.pgm");
+
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in (new pcl::PointCloud<pcl::PointXYZ>);
+  cloud_in = getPointCloudFromMap(cloud_in, "map1.pgm", 0, 0, 0);
+  //cloud_in = getPointCloudFromMap(cloud_in, "map2.pgm", 0, 0, 0);
+
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
+  //cloud_out = getPointCloudFromMap(cloud_out, "map1.pgm", 4.0, 4.0, 100);
+  //cloud_out = getPointCloudFromMap(cloud_out, "map2.pgm", 4.0, 4.0, 100);
+  cloud_out = getPointCloudFromMap(cloud_out, "moved_map2.pgm", 0, 0, 0);
+
+  // ICP で変換行列を算出
+  pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+  icp.setInputCloud(cloud_in);
+  icp.setInputTarget(cloud_out);
+  pcl::PointCloud<pcl::PointXYZ> cloud_source_registered;
+  icp.align(cloud_source_registered);
+
+  // 変換行列を表示
+  Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity ();
+  transformation_matrix = icp.getFinalTransformation ().cast<double>();
+  print4x4Matrix (transformation_matrix);
+
+  // 変換行列から ICP で推定された点群 cloud_final を取得
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_final (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::transformPointCloud(*cloud_in, *cloud_final, transformation_matrix); 
+
+  // 点群の可視化
+  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+  viewer = threeCloudsVis(cloud_in, cloud_out, cloud_final);
+  while (!viewer->wasStopped()) {
+    viewer->spinOnce (100);
+    boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+  }
+
 }
