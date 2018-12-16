@@ -108,7 +108,22 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::Po
   return cloud;
 }
 
-void combine_maps(std::string map1_name, std::string map2_name)
+Eigen::MatrixXd translateMap(Eigen::MatrixXd map, int x, int y){
+  Eigen::MatrixXd translated_map = Eigen::MatrixXd::Ones(map.rows(), map.cols())*205;
+  for(int i=0; i<map.rows(); i++){
+    for(int j=0; j<map.cols(); j++){
+      if(map(i, j) != 205){
+        if(i+y < translated_map.rows() && i+y >=0
+        && j-x < translated_map.cols() && j-x >= 0){
+          translated_map(i+y, j-x) = map(i, j);
+        }
+      }
+    }
+  }
+  return translated_map;
+}
+
+void combineMaps(std::string map1_name, std::string map2_name)
 {
   // 地図の読み込み
   std::string homepath = std::getenv("HOME");
@@ -128,30 +143,20 @@ void combine_maps(std::string map1_name, std::string map2_name)
   ROS_INFO("map: opencv -> eigen");
 
   // 地図を動かす
-  Eigen::MatrixXd moved_map2_e = Eigen::MatrixXd::Ones(map2_e.rows(), map2_e.cols())*205;
   int diff_x = int((MAP2_POS_X - MAP1_POS_X) / RESOLUTION);
   int diff_y = int((MAP2_POS_Y - MAP1_POS_Y) / RESOLUTION);
-  for(int i=0; i<map2_e.rows(); i++){
-    for(int j=0; j<map2_e.cols(); j++){
-      if(map2_e(i, j) != 205){
-        if(i+diff_y < moved_map2_e.rows() && i+diff_y >=0
-        && j-diff_x < moved_map2_e.cols() && j-diff_x >= 0){
-          moved_map2_e(i+diff_y, j-diff_x) = map2_e(i, j);
-        }
-      }
-    }
-  }
+  map2_e = translateMap(map2_e, diff_x, diff_y);
 
-  cv::eigen2cv(moved_map2_e, map2);
+  cv::eigen2cv(map2_e, map2);
   ROS_INFO("map: eigen -> opencv");
-  cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/moved_map2.pgm", map2);
-  ROS_INFO("map: moved map exported");
+  cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/translated_map2.pgm", map2);
+  ROS_INFO("map: translated map exported");
   
   // 地図を合成
   for(int i=0; i<map1_e.rows(); i++){
     for(int j=0; j<map1_e.cols(); j++){
       if(map1_e(i, j) == 205){
-        map1_e(i, j) = moved_map2_e(i, j);
+        map1_e(i, j) = map2_e(i, j);
       }
     }
   }
@@ -163,12 +168,11 @@ void combine_maps(std::string map1_name, std::string map2_name)
 }
 
 
-
 int main (int argc, char** argv)
 {
   ros::init(argc, argv, "icp_map_combiner");
 
-  combine_maps("map1.pgm", "map2.pgm");
+  combineMaps("map1.pgm", "map2.pgm");
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in (new pcl::PointCloud<pcl::PointXYZ>);
   cloud_in = getPointCloudFromMap(cloud_in, "map1.pgm", 0, 0, 0);
@@ -177,7 +181,7 @@ int main (int argc, char** argv)
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
   //cloud_out = getPointCloudFromMap(cloud_out, "map1.pgm", 4.0, 4.0, 100);
   //cloud_out = getPointCloudFromMap(cloud_out, "map2.pgm", 4.0, 4.0, 100);
-  cloud_out = getPointCloudFromMap(cloud_out, "moved_map2.pgm", 0, 0, 0);
+  cloud_out = getPointCloudFromMap(cloud_out, "translated_map2.pgm", 0, 0, 0);
 
   // ICP で変換行列を算出
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
