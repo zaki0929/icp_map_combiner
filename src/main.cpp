@@ -1,6 +1,4 @@
 #include <ros/ros.h>
-//#include <pcl/point_types.h>
-//#include <pcl/point_cloud.h>
 #include <pcl/registration/icp.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/common/transforms.h>
@@ -63,14 +61,6 @@ boost::shared_ptr<pcl::visualization::PCLVisualizer> threeCloudsVis (
   return viewer;
 }
 
-inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, double y){
-  if(x >= (double)x1 && x <= (double)x2 && y >= (double)y1 && y <= (double)y2){
-      return 1;
-    }else{
-        return 0;
-      }
-}
-
 pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::string map_name, double offset_x, double offset_y, double offset_z)
 {
   // 地図の読み込み
@@ -99,14 +89,14 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::Po
   cloud->width    = plot_num;
   cloud->height   = 1;
   cloud->is_dense = false;
-  cloud->points.resize (cloud->width * cloud->height);
+  cloud->points.resize(cloud->width * cloud->height);
 
   int index = 0;
   for(int i=0; i<img_e.rows(); i++){
     for(int j=0; j<img_e.cols(); j++){
-      if(img_e(j, i) < 205){
+      if(img_e(i, j) < 205){
         cloud->points[index].x = j + offset_x;
-        cloud->points[index].y = i + offset_y;
+        cloud->points[index].y = -i + offset_y;
         cloud->points[index].z = 0 + offset_z;
         index++;
       }
@@ -133,78 +123,37 @@ Eigen::MatrixXd translateMap(Eigen::MatrixXd map, int x, int y){
 
 Eigen::MatrixXd rotateMap(Eigen::MatrixXd map, int x, int y, double th){
   Eigen::MatrixXd rotated_map = Eigen::MatrixXd::Ones(map.rows(), map.cols())*205;
-
-  std::vector<double> data_x;
-  std::vector<double> data_y;
-  std::vector<double> data2_x;
-  std::vector<double> data2_y;
-
-  ROS_INFO("1");
   for(int i=0; i<map.rows(); i++){
     for(int j=0; j<map.cols(); j++){
-      if(map(i, j) == 0){
-        data_x.push_back(j-x+0.5);
-        data_y.push_back(-y-i-0.5);
-      }
-      if(map(i, j) == 255){
-        data2_x.push_back(j-x+0.5);
-        data2_y.push_back(-y-i-0.5);
+        if(map(i, j) != 205){
+          int row_index = int( (((j-x+0.5)*std::cos(th)) - ((-y-i-0.5)*std::sin(th))) + x);
+          int col_index = int(-(((j-x+0.5)*std::sin(th)) + ((-y-i-0.5)*std::cos(th))) - y);
+          rotated_map(col_index, row_index) = map(i, j);
       }
     }
   }
-
-  std::vector<double> rotated_data_x;
-  std::vector<double> rotated_data_y;
-  std::vector<double> rotated_data2_x;
-  std::vector<double> rotated_data2_y;
-
-  ROS_INFO("2");
-  for(int i=0; i<data_x.size(); i++){
-    rotated_data_x.push_back((data_x[i]*std::cos(th)) - (data_y[i]*std::sin(th)));
-    rotated_data_y.push_back((data_x[i]*std::sin(th)) + (data_y[i]*std::cos(th)));
-  }
-  for(int i=0; i<data2_x.size(); i++){
-    rotated_data2_x.push_back((data2_x[i]*std::cos(th)) - (data2_y[i]*std::sin(th)));
-    rotated_data2_y.push_back((data2_x[i]*std::sin(th)) + (data2_y[i]*std::cos(th)));
-  }
-
-  ROS_INFO("3");
-  for(int i=0; i<map.rows(); i++){
-    for(int j=0; j<map.cols(); j++){
-      int plot_toggle = 0;
-      for(int k=0; k<rotated_data2_x.size(); k++){
-        double x_point2 =  rotated_data2_x[k] + x;
-        double y_point2 = -rotated_data2_y[k] - y;
-        if(check_point_within_rect(j, i, j+1, i+1, x_point2, y_point2)){
-          plot_toggle = 1;
-        }
-      }
-      if(plot_toggle){
-        rotated_map(i, j) = 255;
-      }
-    }
-  }
-
-  ROS_INFO("4");
-  for(int i=0; i<map.rows(); i++){
-    ROS_INFO("%d / %d", i, map.rows());
-    for(int j=0; j<map.cols(); j++){
-      int plot_toggle = 0;
-      for(int k=0; k<rotated_data_x.size(); k++){
-        double x_point =  rotated_data_x[k] + x;
-        double y_point = -rotated_data_y[k] - y;
-        if(check_point_within_rect(j, i, j+1, i+1, x_point, y_point)){
-          plot_toggle = 1;
-        }
-      }
-      if(plot_toggle){
-        rotated_map(i, j) = 0;
-      }
-    }
-  }
-
-  ROS_INFO("finish");
   return rotated_map;
+}
+
+Eigen::Matrix4d getTransformationMatFromICP(std::string map1_name, std::string map2_name){
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in (new pcl::PointCloud<pcl::PointXYZ>);
+  cloud_in = getPointCloudFromMap(cloud_in, map1_name, 0, 0, 0);
+
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
+  cloud_out = getPointCloudFromMap(cloud_out, map2_name, 0, 0, 0);
+
+  // ICP で変換行列を算出
+  pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+  icp.setInputCloud(cloud_in);
+  icp.setInputTarget(cloud_out);
+  pcl::PointCloud<pcl::PointXYZ> cloud_source_registered;
+  icp.align(cloud_source_registered);
+
+  // 変換行列を表示
+  Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity ();
+  transformation_matrix = icp.getFinalTransformation ().cast<double>();
+
+  return transformation_matrix;
 }
 
 void combineMaps(std::string map1_name, std::string map2_name)
@@ -237,12 +186,23 @@ void combineMaps(std::string map1_name, std::string map2_name)
   ROS_INFO("map: translated map exported");
   
   // 地図を回転
-  map2_e = rotateMap(map2_e, MAP1_POS_X / RESOLUTION, MAP1_POS_Y / RESOLUTION, 3.14);
+  double th = std::acos(MAP1_ORI_W) - std::acos(MAP2_ORI_W);
+  map2_e = rotateMap(map2_e, MAP1_POS_X / RESOLUTION, MAP1_POS_Y / RESOLUTION, th);
 
   cv::eigen2cv(map2_e, map2);
   ROS_INFO("map: eigen -> opencv");
   cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/rotated_map2.pgm", map2);
   ROS_INFO("map: rotated map exported");
+
+  // ICP で修正
+  Eigen::Matrix4d tf_mat = getTransformationMatFromICP("map1.pgm", "rotated_map2.pgm");
+  map2_e = translateMap(map2_e, tf_mat(0, 3), tf_mat(1, 3));
+  if (tf_mat(1, 0) < 0){
+    th = std::acos(tf_mat(0, 0));
+  } else {
+    th = -std::acos(tf_mat(0, 0));
+  }
+  map2_e = rotateMap(map2_e, 0, 0, th);
 
   // 地図を合成
   for(int i=0; i<map1_e.rows(); i++){
@@ -273,7 +233,7 @@ int main (int argc, char** argv)
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
   //cloud_out = getPointCloudFromMap(cloud_out, "map1.pgm", 4.0, 4.0, 100);
   //cloud_out = getPointCloudFromMap(cloud_out, "map2.pgm", 4.0, 4.0, 100);
-  cloud_out = getPointCloudFromMap(cloud_out, "translated_map2.pgm", 0, 0, 0);
+  cloud_out = getPointCloudFromMap(cloud_out, "rotated_map2.pgm", 0, 0, 0);
 
   // ICP で変換行列を算出
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
