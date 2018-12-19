@@ -63,6 +63,14 @@ boost::shared_ptr<pcl::visualization::PCLVisualizer> threeCloudsVis (
   return viewer;
 }
 
+inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, double y){
+  if(x >= (double)x1 && x <= (double)x2 && y >= (double)y1 && y <= (double)y2){
+      return 1;
+    }else{
+        return 0;
+      }
+}
+
 pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::string map_name, double offset_x, double offset_y, double offset_z)
 {
   // 地図の読み込み
@@ -123,6 +131,82 @@ Eigen::MatrixXd translateMap(Eigen::MatrixXd map, int x, int y){
   return translated_map;
 }
 
+Eigen::MatrixXd rotateMap(Eigen::MatrixXd map, int x, int y, double th){
+  Eigen::MatrixXd rotated_map = Eigen::MatrixXd::Ones(map.rows(), map.cols())*205;
+
+  std::vector<double> data_x;
+  std::vector<double> data_y;
+  std::vector<double> data2_x;
+  std::vector<double> data2_y;
+
+  ROS_INFO("1");
+  for(int i=0; i<map.rows(); i++){
+    for(int j=0; j<map.cols(); j++){
+      if(map(i, j) == 0){
+        data_x.push_back(j-x+0.5);
+        data_y.push_back(-y-i-0.5);
+      }
+      if(map(i, j) == 255){
+        data2_x.push_back(j-x+0.5);
+        data2_y.push_back(-y-i-0.5);
+      }
+    }
+  }
+
+  std::vector<double> rotated_data_x;
+  std::vector<double> rotated_data_y;
+  std::vector<double> rotated_data2_x;
+  std::vector<double> rotated_data2_y;
+
+  ROS_INFO("2");
+  for(int i=0; i<data_x.size(); i++){
+    rotated_data_x.push_back((data_x[i]*std::cos(th)) - (data_y[i]*std::sin(th)));
+    rotated_data_y.push_back((data_x[i]*std::sin(th)) + (data_y[i]*std::cos(th)));
+  }
+  for(int i=0; i<data2_x.size(); i++){
+    rotated_data2_x.push_back((data2_x[i]*std::cos(th)) - (data2_y[i]*std::sin(th)));
+    rotated_data2_y.push_back((data2_x[i]*std::sin(th)) + (data2_y[i]*std::cos(th)));
+  }
+
+  ROS_INFO("3");
+  for(int i=0; i<map.rows(); i++){
+    for(int j=0; j<map.cols(); j++){
+      int plot_toggle = 0;
+      for(int k=0; k<rotated_data2_x.size(); k++){
+        double x_point2 =  rotated_data2_x[k] + x;
+        double y_point2 = -rotated_data2_y[k] - y;
+        if(check_point_within_rect(j, i, j+1, i+1, x_point2, y_point2)){
+          plot_toggle = 1;
+        }
+      }
+      if(plot_toggle){
+        rotated_map(i, j) = 255;
+      }
+    }
+  }
+
+  ROS_INFO("4");
+  for(int i=0; i<map.rows(); i++){
+    ROS_INFO("%d / %d", i, map.rows());
+    for(int j=0; j<map.cols(); j++){
+      int plot_toggle = 0;
+      for(int k=0; k<rotated_data_x.size(); k++){
+        double x_point =  rotated_data_x[k] + x;
+        double y_point = -rotated_data_y[k] - y;
+        if(check_point_within_rect(j, i, j+1, i+1, x_point, y_point)){
+          plot_toggle = 1;
+        }
+      }
+      if(plot_toggle){
+        rotated_map(i, j) = 0;
+      }
+    }
+  }
+
+  ROS_INFO("finish");
+  return rotated_map;
+}
+
 void combineMaps(std::string map1_name, std::string map2_name)
 {
   // 地図の読み込み
@@ -152,6 +236,14 @@ void combineMaps(std::string map1_name, std::string map2_name)
   cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/translated_map2.pgm", map2);
   ROS_INFO("map: translated map exported");
   
+  // 地図を回転
+  map2_e = rotateMap(map2_e, MAP1_POS_X / RESOLUTION, MAP1_POS_Y / RESOLUTION, 3.14);
+
+  cv::eigen2cv(map2_e, map2);
+  ROS_INFO("map: eigen -> opencv");
+  cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/rotated_map2.pgm", map2);
+  ROS_INFO("map: rotated map exported");
+
   // 地図を合成
   for(int i=0; i<map1_e.rows(); i++){
     for(int j=0; j<map1_e.cols(); j++){
