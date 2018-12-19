@@ -68,14 +68,11 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::Po
   cv::Mat img = cv::imread(homepath + "/catkin_ws/src/icp_map_combiner/map/" + map_name, 0);
   if(img.empty()){
     ROS_ERROR("map: unable to open the map");
-  }else{
-    ROS_INFO("map: map loaded");
   }
   
   // 地図データをOpenCVからEigenに渡す
   Eigen::MatrixXd img_e;
   cv::cv2eigen(img, img_e);
-  ROS_INFO("map: opencv -> eigen");
 
   int plot_num = 0;
   for(int i=0; i<img_e.rows(); i++){
@@ -102,7 +99,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr getPointCloudFromMap(pcl::PointCloud<pcl::Po
       }
     }
   }
-
   return cloud;
 }
 
@@ -164,8 +160,6 @@ void combineMaps(std::string map1_name, std::string map2_name)
   cv::Mat map2 = cv::imread(homepath + "/catkin_ws/src/icp_map_combiner/map/" + map2_name, 0);
   if(map1.empty() || map2.empty()){
     ROS_ERROR("map: unable to open the map");
-  }else{
-    ROS_INFO("map: map loaded");
   }
   
   // 地図データをOpenCVからEigenに渡す
@@ -173,29 +167,21 @@ void combineMaps(std::string map1_name, std::string map2_name)
   Eigen::MatrixXd map2_e;
   cv::cv2eigen(map1, map1_e);
   cv::cv2eigen(map2, map2_e);
-  ROS_INFO("map: opencv -> eigen");
 
-  // 地図を動かす
+  // 推定位置で修正
   int diff_x = int((MAP2_POS_X - MAP1_POS_X) / RESOLUTION);
   int diff_y = int((MAP2_POS_Y - MAP1_POS_Y) / RESOLUTION);
   map2_e = translateMap(map2_e, diff_x, diff_y);
 
-  cv::eigen2cv(map2_e, map2);
-  ROS_INFO("map: eigen -> opencv");
-  cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/translated_map2.pgm", map2);
-  ROS_INFO("map: translated map exported");
-  
-  // 地図を回転
   double th = std::acos(MAP1_ORI_W) - std::acos(MAP2_ORI_W);
   map2_e = rotateMap(map2_e, MAP1_POS_X / RESOLUTION, MAP1_POS_Y / RESOLUTION, th);
 
   cv::eigen2cv(map2_e, map2);
-  ROS_INFO("map: eigen -> opencv");
-  cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/rotated_map2.pgm", map2);
-  ROS_INFO("map: rotated map exported");
+  cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/map/transformed_map2.pgm", map2);
+  ROS_INFO("map: transformed map exported");
 
   // ICP で修正
-  Eigen::Matrix4d tf_mat = getTransformationMatFromICP("map1.pgm", "rotated_map2.pgm");
+  Eigen::Matrix4d tf_mat = getTransformationMatFromICP("map1.pgm", "transformed_map2.pgm");
   map2_e = translateMap(map2_e, tf_mat(0, 3), tf_mat(1, 3));
   if (tf_mat(1, 0) < 0){
     th = std::acos(tf_mat(0, 0));
@@ -214,49 +200,35 @@ void combineMaps(std::string map1_name, std::string map2_name)
   }
 
   cv::eigen2cv(map1_e, map1);
-  ROS_INFO("map: eigen -> opencv");
   cv::imwrite(homepath + "/catkin_ws/src/icp_map_combiner/export/combined_map.pgm", map1);
   ROS_INFO("map: combined map exported");
 }
 
-
-int main (int argc, char** argv)
-{
-  ros::init(argc, argv, "icp_map_combiner");
-
-  combineMaps("map1.pgm", "map2.pgm");
-
+void visualizeICP(std::string map1_name, std::string map2_name){
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in (new pcl::PointCloud<pcl::PointXYZ>);
-  cloud_in = getPointCloudFromMap(cloud_in, "map1.pgm", 0, 0, 0);
-  //cloud_in = getPointCloudFromMap(cloud_in, "map2.pgm", 0, 0, 0);
+  cloud_in = getPointCloudFromMap(cloud_in, map1_name, 0, 0, 0);
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
-  //cloud_out = getPointCloudFromMap(cloud_out, "map1.pgm", 4.0, 4.0, 100);
-  //cloud_out = getPointCloudFromMap(cloud_out, "map2.pgm", 4.0, 4.0, 100);
-  cloud_out = getPointCloudFromMap(cloud_out, "rotated_map2.pgm", 0, 0, 0);
+  cloud_out = getPointCloudFromMap(cloud_out, map2_name, 0, 0, 0);
 
-  // ICP で変換行列を算出
-  pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-  icp.setInputCloud(cloud_in);
-  icp.setInputTarget(cloud_out);
-  pcl::PointCloud<pcl::PointXYZ> cloud_source_registered;
-  icp.align(cloud_source_registered);
-
-  // 変換行列を表示
-  Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity ();
-  transformation_matrix = icp.getFinalTransformation ().cast<double>();
-  print4x4Matrix (transformation_matrix);
-
-  // 変換行列から ICP で推定された点群 cloud_final を取得
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_final (new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::transformPointCloud(*cloud_in, *cloud_final, transformation_matrix); 
+  pcl::transformPointCloud(*cloud_in, *cloud_final, getTransformationMatFromICP(map1_name, map2_name)); 
 
-  // 点群の可視化
   boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
   viewer = threeCloudsVis(cloud_in, cloud_out, cloud_final);
   while (!viewer->wasStopped()) {
     viewer->spinOnce (100);
     boost::this_thread::sleep (boost::posix_time::microseconds (100000));
   }
+}
 
+int main (int argc, char** argv)
+{
+  ros::init(argc, argv, "icp_map_combiner");
+
+  // 地図の合成
+  combineMaps("map1.pgm", "map2.pgm");
+
+  // 点群の可視化
+  visualizeICP("map1.pgm", "transformed_map2.pgm");
 }
